@@ -378,14 +378,14 @@
 			<li>
 				<b>Color</b> — the single attribute with <code>drivesColor: true</code> picks the banner background. Its
 				<code>values</code> array is ranked most restrictive first — <b>index 0 = highest ranking</b> (same convention
-				as Virtru HIERARCHY attributes). <code>colorMode: "highest"</code> (default) selects the highest-ranked matched
+				as Virtru HIERARCHY attributes). <code>colorMode: "highest"</code> selects the highest-ranked matched
 				value (earliest in the array); <code>"attribute"</code> selects the first of the room's values that is mapped.
 				The foreground color is computed for readable contrast (WCAG relative luminance). If the driver attribute has
 				no matched values, <code>banner.fallbackColor</code> is used.
 			</li>
 			<li>
 				<b>Fallback</b> — when no attribute produces a segment, the banner renders <code>banner.fallbackText</code> on
-				<code>banner.fallbackColor</code> (defaults: <code>NO CLASSIFICATION DATA</code> / <code>#6C727A</code>).
+				<code>banner.fallbackColor</code>.
 			</li>
 			<li>
 				<b>Styles</b> (<code>banner.style</code>) — <code>classic</code>: single centered line; <code>segmented</code>:
@@ -442,9 +442,6 @@
 
 // ---- engine (mirrors @rocket.chat/abac classification-banners/engine.ts) ----
 
-const FALLBACK_TEXT = 'NO CLASSIFICATION DATA';
-const FALLBACK_COLOR = '#6C727A';
-
 const readableTextColor = (hex) => {
 	const [r, g, b] = [0, 2, 4].map((offset) => parseInt(hex.replace('#', '').slice(offset, offset + 2), 16) / 255);
 	const linearize = (channel) => (channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4);
@@ -462,13 +459,12 @@ const buildSegment = (attribute, roomAttributes) => {
 	let matched = attribute.values.filter(({ source }) => roomValues.includes(source));
 	if (!matched.length) return null;
 	if (attribute.sortAlpha) matched = [...matched].sort((a, b) => a.label.localeCompare(b.label));
-	const threshold = attribute.groupThreshold ?? 0;
-	const body = threshold > 0 && matched.length >= threshold
-		? (attribute.multipleLabel ?? '')
-		: matched.map(({ label }) => label).join(attribute.valueSeparator ?? '/');
+	const body = attribute.groupThreshold > 0 && matched.length >= attribute.groupThreshold
+		? attribute.multipleLabel
+		: matched.map(({ label }) => label).join(attribute.valueSeparator);
 	return {
 		attrId: attribute.id,
-		text: attribute.showLabel ? `${attribute.bannerLabel ?? ''}${attribute.labelSeparator ?? ''}${body}` : body,
+		text: attribute.showLabel ? `${attribute.bannerLabel}${attribute.labelSeparator}${body}` : body,
 	};
 };
 
@@ -477,25 +473,24 @@ const resolveColor = (config, roomAttributes) => {
 	const roomValues = roomAttributes.find(({ key }) => key === driver.source)?.values ?? [];
 	// values are ranked most restrictive first: index 0 = highest ranking
 	const matched = driver.values.filter(({ source }) => roomValues.includes(source));
-	if (!matched.length) return config.banner.fallbackColor ?? FALLBACK_COLOR;
-	if ((config.banner.colorMode ?? 'highest') === 'highest') return matched[0].color;
+	if (!matched.length) return config.banner.fallbackColor;
+	if (config.banner.colorMode === 'highest') return matched[0].color;
 	return roomValues.map((value) => driver.values.find(({ source }) => source === value)).find(Boolean)?.color ?? matched[0].color;
 };
 
 const buildClassificationBanner = (config, roomAttributes) => {
 	const { banner } = config;
 	const base = {
-		style: banner.style ?? 'classic',
-		uppercase: banner.uppercase ?? true,
-		monospace: banner.monospace ?? false,
+		style: banner.style,
+		uppercase: banner.uppercase,
+		monospace: banner.monospace,
 	};
 	const segments = config.attributes
 		.filter(({ showInBanner }) => showInBanner)
 		.map((attribute) => buildSegment(attribute, roomAttributes))
 		.filter(Boolean);
 	if (!segments.length) {
-		const backgroundColor = banner.fallbackColor ?? FALLBACK_COLOR;
-		return { ...base, text: banner.fallbackText ?? FALLBACK_TEXT, segments: [], backgroundColor, color: readableTextColor(backgroundColor) };
+		return { ...base, text: banner.fallbackText, segments: [], backgroundColor: banner.fallbackColor, color: readableTextColor(banner.fallbackColor) };
 	}
 	const backgroundColor = resolveColor(config, roomAttributes);
 	return { ...base, text: segments.map(({ text }) => text).join(banner.delimiter), segments, backgroundColor, color: readableTextColor(backgroundColor) };
