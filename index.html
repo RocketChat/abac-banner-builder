@@ -460,7 +460,7 @@ const shade = (hex, factor) => {
 const buildSegment = (attribute, roomAttributes) => {
 	const roomValues = roomAttributes.find(({ key }) => key === attribute.source)?.values ?? [];
 	let matched = attribute.values.filter(({ source }) => roomValues.includes(source));
-	if (matched.length === 0) return null;
+	if (!matched.length) return null;
 	if (attribute.sortAlpha) matched = [...matched].sort((a, b) => a.label.localeCompare(b.label));
 	const threshold = attribute.groupThreshold ?? 0;
 	const body = threshold > 0 && matched.length >= threshold
@@ -477,7 +477,7 @@ const resolveColor = (config, roomAttributes) => {
 	const roomValues = roomAttributes.find(({ key }) => key === driver.source)?.values ?? [];
 	// values are ranked most restrictive first: index 0 = highest ranking
 	const matched = driver.values.filter(({ source }) => roomValues.includes(source));
-	if (matched.length === 0) return config.banner.fallbackColor ?? FALLBACK_COLOR;
+	if (!matched.length) return config.banner.fallbackColor ?? FALLBACK_COLOR;
 	if ((config.banner.colorMode ?? 'highest') === 'highest') return matched[0].color;
 	return roomValues.map((value) => driver.values.find(({ source }) => source === value)).find(Boolean)?.color ?? matched[0].color;
 };
@@ -493,7 +493,7 @@ const buildClassificationBanner = (config, roomAttributes) => {
 		.filter(({ showInBanner }) => showInBanner)
 		.map((attribute) => buildSegment(attribute, roomAttributes))
 		.filter(Boolean);
-	if (segments.length === 0) {
+	if (!segments.length) {
 		const backgroundColor = banner.fallbackColor ?? FALLBACK_COLOR;
 		return { ...base, text: banner.fallbackText ?? FALLBACK_TEXT, segments: [], backgroundColor, color: readableTextColor(backgroundColor) };
 	}
@@ -608,7 +608,7 @@ const RULES = [
 
 const lintConfig = (cfg) => {
 	const problems = [];
-	if (cfg.attributes.length === 0) {
+	if (!cfg.attributes.length) {
 		problems.push('At least one attribute is required.');
 		return problems;
 	}
@@ -622,7 +622,7 @@ const lintConfig = (cfg) => {
 		if (!a.label) problems.push(`Attribute “${a.id}”: label is required.`);
 		const sources = a.values.map((v) => v.source);
 		if (new Set(sources).size !== sources.length) problems.push(`Attribute “${a.id}”: value sources must be unique.`);
-		if (a.values.length === 0) problems.push(`Attribute “${a.id}”: at least one value is required.`);
+		if (!a.values.length) problems.push(`Attribute “${a.id}”: at least one value is required.`);
 		if (a.values.some((v) => !v.source || !v.label)) problems.push(`Attribute “${a.id}”: every value needs a source and a label.`);
 		if (a.groupThreshold > 0 && !a.multipleLabel) problems.push(`Attribute “${a.id}”: a grouped label is required when the group threshold is set.`);
 		if (a.groupThreshold !== 0 && (a.groupThreshold < 2 || a.groupThreshold > 20)) problems.push(`Attribute “${a.id}”: group threshold must be 0 or between 2 and 20.`);
@@ -795,7 +795,7 @@ const renderAttribute = (attribute, index) => {
 
 const renderAttributes = () => {
 	const host = $('#attributes');
-	if (config.attributes.length === 0) {
+	if (!config.attributes.length) {
 		host.replaceChildren(el('div', { id: 'empty-state' },
 			el('p', {}, el('b', {}, 'No attributes yet.')),
 			el('p', {}, 'Add the attributes your ABAC rooms carry, or load the US-Government example to see a complete configuration.'),
@@ -807,7 +807,7 @@ const renderAttributes = () => {
 
 const renderSimulation = () => {
 	const host = $('#sim');
-	if (config.attributes.length === 0) {
+	if (!config.attributes.length) {
 		host.replaceChildren(el('p', { className: 'hint' }, 'Add an attribute first — its values become pickable here.'));
 		return;
 	}
@@ -848,7 +848,7 @@ const renderSimulation = () => {
 const renderWarnings = () => {
 	const problems = lintConfig(config);
 	const box = $('#warnings');
-	if (config.attributes.length === 0) {
+	if (!config.attributes.length) {
 		box.className = 'info';
 		box.replaceChildren(
 			el('h3', {}, 'Getting started'),
@@ -946,7 +946,7 @@ $('#btn-add-attr').addEventListener('click', () => {
 	config.attributes.push({
 		id: `attribute-${config.attributes.length + 1}`, source: '', label: '',
 		showInBanner: true, showLabel: false, bannerLabel: '', labelSeparator: '', valueSeparator: '/',
-		sortAlpha: false, groupThreshold: 0, multipleLabel: '', drivesColor: config.attributes.length === 0,
+		sortAlpha: false, groupThreshold: 0, multipleLabel: '', drivesColor: !config.attributes.length,
 		values: [{ source: '', label: '', color: '#6C727A' }],
 	});
 	update();
