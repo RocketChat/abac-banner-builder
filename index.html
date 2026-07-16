@@ -244,6 +244,8 @@
 	.ms .chip button { border: none; padding: 0 4px; color: var(--ink-soft); background: transparent; font-size: 12px; line-height: 1; }
 	.ms .chip button:hover { color: var(--danger); background: transparent; }
 	.ms select { flex: 1; min-width: 110px; border: none; background: transparent; color: var(--ink-soft); font-size: 12px; padding: 4px; }
+	.ms .chip.unmapped { border-style: dashed; font-family: var(--mono); font-weight: 400; }
+	.ms input.raw { flex: 1; min-width: 110px; border: none; background: transparent; color: var(--ink-soft); font-size: 12px; padding: 4px; font-family: var(--mono); }
 	#sim .sim-group { margin-bottom: 14px; }
 	#sim .sim-group > b { display: block; font-size: 12px; margin-bottom: 4px; }
 	#sim .sim-group .src { font-family: var(--mono); font-size: 11px; color: var(--ink-soft); font-weight: 400; }
@@ -320,7 +322,8 @@
 			<h2>Simulated room values</h2>
 			<div class="card-hint">
 				A pretend room for the live preview only — not part of the JSON. Pick which raw values the room carries per
-				attribute, like assigning ABAC attributes to a room in Rocket.Chat.
+				attribute, like assigning ABAC attributes to a room in Rocket.Chat. Type a value not in the mapping to see how
+				unmapped values render raw.
 			</div>
 			<div class="card-body" id="sim"></div>
 		</section>
@@ -818,7 +821,7 @@ const renderSimulation = () => {
 			const available = attribute.values.filter((v) => v.source && !selected.includes(v.source));
 			const chip = (source) => {
 				const value = attribute.values.find((v) => v.source === source);
-				return el('span', { className: 'chip' }, value?.label || source,
+				return el('span', { className: value ? 'chip' : 'chip unmapped', title: value ? '' : 'Unmapped — renders as raw value' }, value?.label || source,
 					el('button', { 'aria-label': `Remove ${source}`, title: 'Remove', onclick: () => {
 						simulation[attribute.source] = selected.filter((s) => s !== source);
 						update();
@@ -840,6 +843,18 @@ const renderSimulation = () => {
 						el('option', { value: '' }, selected.length ? 'Add value…' : 'Select values…'),
 						...available.map((v) => el('option', { value: v.source }, `${v.label || v.source} (${v.source})`)),
 					),
+					el('input', {
+						className: 'raw',
+						placeholder: 'Add unmapped raw value…',
+						'aria-label': `Add unmapped ${attribute.label || attribute.id} value`,
+						onkeydown: (e) => {
+							const raw = e.target.value.trim();
+							if (e.key !== 'Enter' || !raw || selected.includes(raw)) return;
+							simulation[attribute.source] = [...selected, raw];
+							update();
+							document.querySelectorAll('#sim .sim-group')[groupIndex]?.querySelector('input.raw')?.focus();
+						},
+					}),
 				),
 			);
 		}),
