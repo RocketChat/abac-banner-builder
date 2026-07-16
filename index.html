@@ -460,10 +460,9 @@ const shade = (hex, factor) => {
 
 const buildSegment = (attribute, roomAttributes) => {
 	const roomValues = roomAttributes.find(({ key }) => key === attribute.source)?.values ?? [];
-	const mappedSources = new Set(attribute.values.map(({ source }) => source));
 	let matched = [
 		...attribute.values.filter(({ source }) => roomValues.includes(source)),
-		...roomValues.filter((value) => !mappedSources.has(value)).map((value) => ({ label: value })),
+		...roomValues.filter((value) => !attribute.values.some(({ source }) => source === value)).map((label) => ({ label })),
 	];
 	if (!matched.length) return null;
 	if (attribute.sortAlpha) matched = [...matched].sort((a, b) => a.label.localeCompare(b.label));
