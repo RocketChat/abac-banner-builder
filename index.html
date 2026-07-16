@@ -305,7 +305,8 @@
 			<h2>Attributes</h2>
 			<div class="card-hint">
 				One entry per room attribute that should appear in the banner. Segments render in list order, joined by the
-				delimiter. An attribute only produces a segment when the room carries at least one of its mapped values.
+				delimiter. An attribute produces a segment when the room carries at least one value for it; values without an
+				explicit mapping render as their raw value.
 			</div>
 			<div class="card-body">
 				<div id="attributes"></div>
@@ -365,12 +366,12 @@
 		<ul>
 			<li>
 				<b>Segments</b> — one per attribute with <code>showInBanner: true</code>, in array order, joined by
-				<code>banner.delimiter</code>. An attribute contributes a segment only when the room has at least one value
-				matching one of its <code>values[].source</code> entries (matched against the room attribute whose key equals
-				<code>attributes[].source</code>).
+				<code>banner.delimiter</code>. An attribute contributes a segment when the room has at least one value for the
+				room attribute whose key equals <code>attributes[].source</code>. Values matching a <code>values[].source</code>
+				entry render as their mapped label; unmapped values render as the raw value.
 			</li>
 			<li>
-				<b>Segment text</b> — matched value labels joined by <code>valueSeparator</code>. With
+				<b>Segment text</b> — value labels (mapped label, or raw value when unmapped) joined by <code>valueSeparator</code>. With
 				<code>showLabel: true</code> the segment is prefixed with <code>bannerLabel + labelSeparator</code>. With
 				<code>sortAlpha: true</code> labels are sorted alphabetically. When <code>groupThreshold &gt; 0</code> and the
 				matched value count reaches the threshold, the value list collapses to <code>multipleLabel</code>.
@@ -381,7 +382,7 @@
 				as Virtru HIERARCHY attributes). <code>colorMode: "highest"</code> selects the highest-ranked matched
 				value (earliest in the array); <code>"attribute"</code> selects the first of the room's values that is mapped.
 				The foreground color is computed for readable contrast (WCAG relative luminance). If the driver attribute has
-				no matched values, <code>banner.fallbackColor</code> is used.
+				no matched values, <code>banner.fallbackColor</code> is used. Unmapped values never drive color.
 			</li>
 			<li>
 				<b>Fallback</b> — when no attribute produces a segment, the banner renders <code>banner.fallbackText</code> on
@@ -456,7 +457,11 @@ const shade = (hex, factor) => {
 
 const buildSegment = (attribute, roomAttributes) => {
 	const roomValues = roomAttributes.find(({ key }) => key === attribute.source)?.values ?? [];
-	let matched = attribute.values.filter(({ source }) => roomValues.includes(source));
+	const mappedSources = new Set(attribute.values.map(({ source }) => source));
+	let matched = [
+		...attribute.values.filter(({ source }) => roomValues.includes(source)),
+		...roomValues.filter((value) => !mappedSources.has(value)).map((value) => ({ label: value })),
+	];
 	if (!matched.length) return null;
 	if (attribute.sortAlpha) matched = [...matched].sort((a, b) => a.label.localeCompare(b.label));
 	const body = attribute.groupThreshold > 0 && matched.length >= attribute.groupThreshold
