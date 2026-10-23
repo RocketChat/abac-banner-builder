@@ -83,6 +83,7 @@
 	}
 	#preview-banner.mono { font-family: var(--mono); letter-spacing: 0.02em; }
 	#preview-banner.uppercase { text-transform: uppercase; }
+	#preview-banner.none { background: var(--neutral); color: var(--ink-soft); font-weight: 600; font-style: italic; letter-spacing: 0; }
 	#preview-chrome {
 		background: var(--room);
 		border-bottom: 1px solid var(--line-soft);
@@ -109,6 +110,14 @@
 	header.page h1 { font-size: 19px; font-weight: 700; letter-spacing: -0.01em; color: var(--ink-strong); }
 	header.page p { color: var(--ink-soft); flex-basis: 100%; max-width: 78ch; }
 	header.page .spacer { flex: 1; }
+	.seg { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-soft); }
+	.seg .seg-buttons { display: inline-flex; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+	.seg button { border: none; border-radius: 0; padding: 5px 10px; }
+	.seg button + button { border-left: 1px solid var(--line); }
+	.seg button[aria-pressed='true'] { background: var(--action); color: #fff; font-weight: 600; }
+	#notice { flex-basis: 100%; display: flex; align-items: center; gap: 8px; border: 1px solid var(--line-soft); background: var(--paper); border-radius: var(--radius); padding: 8px 12px; font-size: 12px; }
+	#notice[hidden] { display: none; }
+	#notice span { flex: 1; }
 
 	main {
 		max-width: 1200px;
@@ -142,8 +151,9 @@
 	.card-body { padding: 16px; }
 
 	.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px 16px; }
-	label.field { display: block; font-size: 12px; color: var(--ink-soft); }
-	label.field > span.fname { display: block; margin-bottom: 4px; font-weight: 600; color: var(--ink-strong); }
+	.field { display: block; font-size: 12px; color: var(--ink-soft); }
+	.field > span.fname { display: block; margin-bottom: 4px; font-weight: 600; color: var(--ink-strong); }
+	.choices { display: flex; flex-wrap: wrap; gap: 4px 14px; padding-top: 4px; }
 	.fhint { display: block; margin-top: 4px; font-size: 11px; line-height: 1.4; color: var(--ink-soft); font-weight: 400; }
 	label.check { display: inline-flex; align-items: flex-start; gap: 6px; font-size: 13px; color: var(--ink); cursor: pointer; }
 	label.check input { margin-top: 2px; }
@@ -207,7 +217,7 @@
 	.swatch-cell { display: flex; align-items: center; gap: 6px; }
 	.hex { font-family: var(--mono); font-size: 11px; color: var(--ink-soft); }
 
-	#empty-state {
+	.empty-state {
 		border: 1px dashed var(--line-soft);
 		border-radius: var(--radius);
 		padding: 24px 16px;
@@ -215,7 +225,7 @@
 		color: var(--ink-soft);
 		margin-bottom: 12px;
 	}
-	#empty-state b { color: var(--ink); }
+	.empty-state b { color: var(--ink); }
 
 	#warnings { border: 1px solid var(--warn-line); background: var(--warn-bg); color: var(--warn-ink); border-radius: var(--radius); padding: 12px 16px; margin-bottom: 20px; }
 	#warnings h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .1em; margin-bottom: 8px; }
@@ -245,6 +255,8 @@
 	.ms select { flex: 1; min-width: 110px; border: none; background: transparent; color: var(--ink-soft); font-size: 12px; padding: 4px; }
 	.ms .chip.unmapped { border-style: dashed; font-family: var(--mono); font-weight: 400; }
 	.ms input.raw { flex: 1 1 100%; border: none; border-top: 1px dashed var(--line-soft); background: transparent; color: var(--ink-soft); font-size: 12px; padding: 4px; font-family: var(--mono); }
+	#sim .sim-room { margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--line-soft); }
+	#sim .sim-room:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
 	#sim .sim-group { margin-bottom: 14px; }
 	#sim .sim-group > b { display: block; font-size: 12px; margin-bottom: 4px; }
 	#sim .sim-group .src { font-family: var(--mono); font-size: 11px; color: var(--ink-soft); font-weight: 400; }
@@ -274,7 +286,7 @@
 <div id="preview-dock">
 	<div id="preview-banner" role="img"></div>
 	<div id="preview-chrome">
-		<span class="dot"></span><b id="preview-room">#simulated-room</b><span>this is how the strip renders above the room header</span>
+		<span class="dot"></span><b id="preview-room"></b><span>this is how the strip renders above the room header</span>
 		<span id="preview-position"></span>
 	</div>
 </div>
@@ -282,6 +294,13 @@
 <header class="page">
 	<h1>Classification banner builder</h1>
 	<div class="spacer"></div>
+	<div class="seg" role="group" aria-label="Target Rocket.Chat version">
+		Rocket.Chat
+		<span class="seg-buttons">
+			<button data-schema="8.8" title="Classification banners in ABAC rooms only">8.8 / 8.9</button>
+			<button data-schema="9.0" title="Adds banners for rooms that are not ABAC managed (nonAbacBanner)">9.0+</button>
+		</span>
+	</div>
 	<button id="btn-theme" aria-label="Toggle dark mode"></button>
 	<button id="btn-docs">Docs</button>
 	<button id="btn-import">Import JSON</button>
@@ -290,8 +309,13 @@
 		Compose the <code style="font-family: var(--mono)">ABAC_Classification_Banners_Config</code> document for Rocket.Chat.
 		Add the attributes your rooms carry (e.g. from Virtru or LDAP), map each raw value to a display label and color, and
 		the strip at the top renders live — exactly what members of a matching ABAC room will see. “Load example” shows the
-		complete US-Government configuration from the design prototype.
+		complete US-Government configuration from the design prototype. Pick the Rocket.Chat version you target: 9.0 adds
+		banners for rooms that are not ABAC managed.
 	</p>
+	<div id="notice" role="status" hidden>
+		<span id="notice-text"></span>
+		<button class="ghost" id="notice-close" aria-label="Dismiss notice">✕</button>
+	</div>
 </header>
 
 <main>
@@ -314,15 +338,28 @@
 				<button id="btn-add-attr">Add attribute</button>
 			</div>
 		</section>
+
+		<section class="card" id="non-abac-card">
+			<h2>Non-ABAC rooms</h2>
+			<div class="card-hint">
+				Banners for rooms that are not ABAC managed: DMs, group DMs, discussions, federated rooms and regular channels.
+				The first enabled entry whose room match fits is shown; when none fits, the first enabled entry that applies to
+				any room is the default. With no entries these rooms show no banner. Omnichannel rooms never show a banner.
+			</div>
+			<div class="card-body">
+				<div id="non-abac"></div>
+				<button id="btn-add-non-abac"></button>
+			</div>
+		</section>
 	</div>
 
 	<div class="rail">
 		<section class="card">
 			<h2>Simulated room values</h2>
 			<div class="card-hint">
-				A pretend room for the live preview only — not part of the JSON. Pick which raw values the room carries per
-				attribute, like assigning ABAC attributes to a room in Rocket.Chat. Type a value not in the mapping to see how
-				unmapped values render raw.
+				A pretend room for the live preview only — not part of the JSON. Choose the kind of room; for an ABAC room, pick
+				which raw values it carries per attribute, like assigning ABAC attributes to a room in Rocket.Chat. Type a value
+				not in the mapping to see how unmapped values render raw.
 			</div>
 			<div class="card-body" id="sim"></div>
 		</section>
@@ -344,24 +381,30 @@
 	<h3>Classification banners (ABAC)</h3>
 	<div class="docs-body">
 		<p>
-			Renders a US-Government-style classification banner above the room header in ABAC-managed rooms, driven by a JSON
-			configuration stored in the <code>ABAC_Classification_Banners_Config</code> admin setting
-			(<b>Admin → ABAC → Settings</b>), toggled by <code>ABAC_Classification_Banners_Enabled</code>.
+			Renders a US-Government-style classification banner above the room header, driven by a JSON configuration stored
+			in the <code>ABAC_Classification_Banners_Config</code> admin setting (<b>Admin → ABAC → Settings</b>), toggled by
+			<code>ABAC_Classification_Banners_Enabled</code>. Rocket.Chat 8.8 and 8.9 show it in ABAC-managed rooms only;
+			9.0 adds optional banners for every other room.
 		</p>
 		<p>
-			The configuration is a <b>public setting</b>: it syncs to every logged-in client, and the banner is computed
-			client-side from the room's <code>abacAttributes</code> and the configuration. Config or room-attribute changes
-			propagate to open clients live, with no reload. Note the visibility tradeoff: any logged-in user can read the full
-			configuration (all source keys and value→label/color mappings), so don't encode anything in it that members
-			shouldn't see.
+			In <b>8.8 and 8.9</b> the configuration is a public setting: it syncs to every logged-in client, and the banner is
+			computed client-side from the room's <code>abacAttributes</code>, so any logged-in user can read the full
+			configuration (all source keys and value→label/color mappings). In <b>9.0</b> the setting is private: the server
+			computes the banner and sends only the result with the room (<code>rooms.info</code>).
 		</p>
 
 		<h4>Configuration schema</h4>
 		<p>
-			Version 1 of the configuration is described by the JSON Schema with
+			Both versions use version 1 of the configuration, described by the JSON Schema with
 			<code>$id: https://rocket.chat/schemas/classification-banners/v1.json</code>
 			(published in the Rocket.Chat repository at <code>ee/packages/abac/docs/classification-banners.schema.json</code>).
-			This builder generates and validates documents against that contract.
+			Rocket.Chat checks the document against it when the setting is saved.
+		</p>
+		<p>
+			9.0 adds the optional <code>nonAbacBanner</code> list without a version bump, so every 8.8 document stays valid
+			in 9.0. The reverse does not hold: the schema forbids unknown properties, so an 8.8 or 8.9 server rejects a
+			document that carries <code>nonAbacBanner</code>. Pick the target version with the toggle in the header; in
+			8.8 / 8.9 mode the builder leaves <code>nonAbacBanner</code> out of the JSON.
 		</p>
 
 		<h4>Semantics</h4>
@@ -391,13 +434,24 @@
 				<b>Fallback</b> — when no attribute produces a segment, the banner renders <code>banner.fallbackText</code> on
 				<code>banner.fallbackColor</code>.
 			</li>
+			<li>
+				<b>Non-ABAC rooms</b> (9.0+) — for a room that is not ABAC managed, the first enabled
+				<code>nonAbacBanner</code> entry whose <code>match</code> fits the room is shown; when none fits, the first
+				enabled entry without a <code>match</code> is the default, wherever it sits in the list. A match holds when every
+				property it sets holds: <code>type</code> lists the allowed room types (<code>direct</code> covers DMs and group
+				DMs, <code>public</code>, <code>private</code>), and <code>federated</code>, <code>discussion</code> and
+				<code>team</code> must equal the room's flag. The entry renders its <code>text</code> on its <code>color</code>
+				with the global uppercase and monospace options. Without <code>nonAbacBanner</code> these rooms show no banner.
+				Omnichannel rooms never show a banner.
+			</li>
 			<li><b>Style</b> — <code>banner.style</code> must be <code>classic</code>, a single centered line.</li>
+			<li><code>enabled: false</code> in the JSON hides every banner, like the admin toggle.</li>
 			<li>The banner always renders above the room header.</li>
-			<li>Config changes require no server restart and propagate to open clients live via settings sync.</li>
+			<li>Config changes require no server restart.</li>
 		</ul>
 
 		<h4>Cross-field rules</h4>
-		<p>These rules are part of the v1 contract and are validated by this builder (save-time enforcement in Rocket.Chat ships separately):</p>
+		<p>These rules are part of the v1 contract but cannot be expressed in the JSON Schema, so Rocket.Chat does not check them on save. This builder does:</p>
 		<ul>
 			<li>Exactly one attribute has <code>drivesColor: true</code>.</li>
 			<li><code>attributes[].id</code> values are unique; within an attribute, <code>values[].source</code> are unique.</li>
@@ -410,7 +464,9 @@
 			The bundled example reproduces the design prototype's default state. For a room with
 			<code>clearance.level = [TS]</code>, <code>access.programs = [SAP-1042, SAP-2271, SAP-3380]</code>,
 			<code>dissem.relto = [USA]</code> it renders <code>TOP SECRET // SAR-APPLES/BANANAS/ORANGES // RELTO USA</code> on
-			the Top Secret orange. Use <b>Load example</b> to open it in the builder and copy its JSON.
+			the Top Secret orange. In 9.0+ it also gives federated rooms an <code>UNCLASSIFIED // EXTERNAL</code> banner and
+			every other non-ABAC room an <code>UNCLASSIFIED</code> one. Use <b>Load example</b> to open it in the builder and
+			copy its JSON.
 		</p>
 	</div>
 	<div class="row">
@@ -487,22 +543,47 @@ const resolveColor = ({ attributes, banner }, roomAttributes) => {
 	return match?.color ?? banner.fallbackColor;
 };
 
+const buildPlainBanner = ({ style, uppercase, monospace }, text, backgroundColor) => ({
+	style,
+	uppercase,
+	monospace,
+	text,
+	segments: [],
+	backgroundColor,
+	color: readableTextColor(backgroundColor),
+});
+
 const buildClassificationBanner = (config, roomAttributes) => {
 	const { banner } = config;
-	const base = {
-		style: banner.style,
-		uppercase: banner.uppercase,
-		monospace: banner.monospace,
-	};
 	const segments = config.attributes
 		.filter(({ showInBanner }) => showInBanner)
 		.map((attribute) => buildSegment(attribute, roomAttributes))
 		.filter(Boolean);
 	if (!segments.length) {
-		return { ...base, text: banner.fallbackText, segments: [], backgroundColor: banner.fallbackColor, color: readableTextColor(banner.fallbackColor) };
+		return buildPlainBanner(banner, banner.fallbackText, banner.fallbackColor);
 	}
-	const backgroundColor = resolveColor(config, roomAttributes);
-	return { ...base, text: segments.map(({ text }) => text).join(banner.delimiter), segments, backgroundColor, color: readableTextColor(backgroundColor) };
+	return {
+		...buildPlainBanner(banner, segments.map(({ text }) => text).join(banner.delimiter), resolveColor(config, roomAttributes)),
+		segments,
+	};
+};
+
+const matchesRoom = (room, { type, federated, discussion, team }) =>
+	(!type || type.includes(room.kind)) &&
+	(federated === undefined || federated === room.federated) &&
+	(discussion === undefined || discussion === room.discussion) &&
+	(team === undefined || team === room.team);
+
+const isABACManagedRoom = (room) => room.kind === 'private' && room.abacAttributes.length > 0;
+
+const buildRoomClassificationBanner = (config, room) => {
+	if (room.kind === 'omnichannel') return undefined;
+	if (isABACManagedRoom(room)) return buildClassificationBanner(config, room.abacAttributes);
+	const { banner, nonAbacBanner } = config;
+	const entry =
+		nonAbacBanner?.find(({ enabled, match }) => enabled && match && matchesRoom(room, match)) ??
+		nonAbacBanner?.find(({ enabled, match }) => enabled && !match);
+	return entry && buildPlainBanner(banner, entry.text, entry.color);
 };
 
 // ---- configurations ----
@@ -525,6 +606,10 @@ const emptyConfig = () => ({
 
 const exampleConfig = () => ({
 	...emptyConfig(),
+	nonAbacBanner: [
+		{ enabled: true, text: 'UNCLASSIFIED // EXTERNAL', color: '#007a33', match: { federated: true } },
+		{ enabled: true, text: 'UNCLASSIFIED', color: '#007a33' },
+	],
 	attributes: [
 		{
 			id: 'classification', source: 'clearance.level', label: 'Classification level',
@@ -564,8 +649,24 @@ const exampleConfig = () => ({
 	],
 });
 
+const SCHEMA_LABELS = { '8.8': '8.8 / 8.9', '9.0': '9.0+' };
+
+const ROOM_KINDS = [
+	['abac', 'ABAC-managed room', '#abac-room'],
+	['public', 'Public channel', '#public-channel'],
+	['private', 'Private group', '#private-group'],
+	['direct', 'Direct message or group DM', '@direct-message'],
+	['omnichannel', 'Omnichannel room', 'omnichannel-visitor'],
+];
+
+const ROOM_TYPES = [['direct', 'Direct / group DM'], ['public', 'Public'], ['private', 'Private']];
+
+const defaultRoom = () => ({ kind: 'abac', federated: false, discussion: false, team: false });
+
 const CONFIG_KEY = 'cb-config';
 const SIMULATION_KEY = 'cb-simulation';
+const ROOM_KEY = 'cb-room';
+const SCHEMA_KEY = 'cb-schema';
 
 const loadStoredConfig = () => {
 	try {
@@ -576,6 +677,24 @@ const loadStoredConfig = () => {
 		}
 	} catch { /* corrupt or unavailable storage — start fresh */ }
 	return null;
+};
+
+const loadStoredRoom = () => {
+	try {
+		const stored = JSON.parse(localStorage.getItem(ROOM_KEY));
+		if (ROOM_KINDS.some(([kind]) => kind === stored?.kind)) {
+			return { ...defaultRoom(), ...stored };
+		}
+	} catch { /* corrupt or unavailable storage — start fresh */ }
+	return defaultRoom();
+};
+
+const loadStoredSchema = () => {
+	try {
+		return localStorage.getItem(SCHEMA_KEY) === '8.8' ? '8.8' : '9.0';
+	} catch {
+		return '9.0';
+	}
 };
 
 const loadStoredSimulation = () => {
@@ -592,12 +711,23 @@ const persist = () => {
 	try {
 		localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
 		localStorage.setItem(SIMULATION_KEY, JSON.stringify(simulation));
+		localStorage.setItem(ROOM_KEY, JSON.stringify(simRoom));
+		localStorage.setItem(SCHEMA_KEY, schemaVersion);
 	} catch { /* storage unavailable (e.g. file://) — work is session-only */ }
 };
 
 let config = loadStoredConfig() ?? emptyConfig();
 let simulation = loadStoredSimulation();
+let simRoom = loadStoredRoom();
+let schemaVersion = loadStoredSchema();
 const collapsedAttributes = new WeakSet();
+
+const supportsNonAbac = () => schemaVersion === '9.0';
+
+const exportedConfig = () => {
+	const { nonAbacBanner, attributes, ...head } = config;
+	return { ...head, ...(supportsNonAbac() && nonAbacBanner && { nonAbacBanner }), attributes };
+};
 
 // ---- cross-field rules (documented in the v1 schema; enforced here as warnings) ----
 
@@ -609,6 +739,11 @@ const RULES = [
 	'A grouped label is set wherever a group threshold is set',
 	'A banner label is set wherever “show label prefix” is on',
 	'A segment delimiter is set',
+];
+
+const NON_ABAC_RULES = [
+	'Non-ABAC banners include an enabled default entry that applies to any room',
+	'Every non-ABAC banner has text, and every room match sets at least one condition',
 ];
 
 const lintConfig = (cfg) => {
@@ -634,6 +769,15 @@ const lintConfig = (cfg) => {
 		if (a.showLabel && !a.bannerLabel) problems.push(`Attribute “${a.id}”: a banner label is required when “show label prefix” is on.`);
 	}
 	if (!cfg.banner.delimiter) problems.push('A segment delimiter is required.');
+	if (cfg.nonAbacBanner) {
+		if (!cfg.nonAbacBanner.some(isDefaultEntry)) {
+			problems.push('Non-ABAC banners need an enabled entry that applies to any room: it is the default when no other entry matches.');
+		}
+		cfg.nonAbacBanner.forEach((entry, index) => {
+			if (!entry.text) problems.push(`Non-ABAC banner ${index + 1}: text is required.`);
+			if (entry.match && !Object.keys(entry.match).length) problems.push(`Non-ABAC banner ${index + 1}: set at least one room condition, or make it apply to any room.`);
+		});
+	}
 	return problems;
 };
 
@@ -656,15 +800,43 @@ const check = (labelText, props, hint) =>
 	el('label', { className: 'check' }, el('input', { type: 'checkbox', ...props }),
 		el('span', {}, labelText, hint && el('span', { className: 'fhint' }, hint)));
 
+const moveItem = (list, index, delta) => {
+	list.splice(index + delta, 0, ...list.splice(index, 1));
+	update();
+};
+
+const simulatedRoom = () => {
+	if (simRoom.kind !== 'abac') return { ...simRoom, abacAttributes: [] };
+	const abacAttributes = Object.entries(simulation).filter(([, values]) => values.length).map(([key, values]) => ({ key, values }));
+	return { ...defaultRoom(), kind: 'private', abacAttributes };
+};
+
+const noBannerReason = (room) => {
+	if (!config.enabled) return 'banners are disabled in this configuration';
+	if (room.kind === 'omnichannel') return 'Omnichannel rooms never show a banner';
+	const unmanaged = simRoom.kind === 'abac' ? 'the room has no ABAC attributes, so it is not ABAC managed, and ' : '';
+	return unmanaged + (supportsNonAbac() ? 'no non-ABAC banner applies to it' : 'Rocket.Chat 8.8 and 8.9 show banners in ABAC rooms only');
+};
+
 const renderPreview = () => {
-	const banner = buildClassificationBanner(config, Object.entries(simulation).map(([key, values]) => ({ key, values })));
+	const room = simulatedRoom();
+	const banner = config.enabled ? buildRoomClassificationBanner(exportedConfig(), room) : undefined;
 	const strip = $('#preview-banner');
+	$('#preview-room').textContent = ROOM_KINDS.find(([kind]) => kind === simRoom.kind)[2];
+	$('#preview-position').textContent = `Rocket.Chat ${SCHEMA_LABELS[schemaVersion]}`;
+	if (!banner) {
+		const text = `No banner: ${noBannerReason(room)}`;
+		strip.className = 'none';
+		strip.style.background = strip.style.color = '';
+		strip.setAttribute('aria-label', text);
+		strip.replaceChildren(el('span', {}, text));
+		return;
+	}
 	strip.className = `${banner.uppercase ? 'uppercase' : ''} ${banner.monospace ? 'mono' : ''}`;
 	strip.style.background = banner.backgroundColor;
 	strip.style.color = banner.color;
 	strip.setAttribute('aria-label', banner.text);
 	strip.replaceChildren(el('span', {}, banner.text));
-	$('#preview-position').textContent = `style: ${banner.style}${config.enabled ? '' : ' · disabled'}`;
 };
 
 const renderBannerOptions = () => {
@@ -693,16 +865,13 @@ const renderBannerOptions = () => {
 		),
 		el('div', {},
 			check('Enabled', { checked: config.enabled, onchange: (e) => { config.enabled = e.target.checked; update(); } },
-				'Master switch inside the JSON. Rocket.Chat additionally has its own admin toggle.'),
+				'Master switch inside the JSON: off hides every banner. Rocket.Chat additionally has its own admin toggle.'),
 		),
 	);
 };
 
 const renderAttribute = (attribute, index) => {
-	const move = (delta) => {
-		config.attributes.splice(index + delta, 0, ...config.attributes.splice(index, 1));
-		update();
-	};
+	const move = (delta) => moveItem(config.attributes, index, delta);
 	const textInput = (key, props = {}) =>
 		el('input', { type: 'text', value: attribute[key] ?? '', oninput: (e) => { attribute[key] = e.target.value; update(false); }, ...props });
 	const selectInput = (key, options) =>
@@ -787,7 +956,7 @@ const renderAttribute = (attribute, index) => {
 const renderAttributes = () => {
 	const host = $('#attributes');
 	if (!config.attributes.length) {
-		host.replaceChildren(el('div', { id: 'empty-state' },
+		host.replaceChildren(el('div', { className: 'empty-state' },
 			el('p', {}, el('b', {}, 'No attributes yet.')),
 			el('p', {}, 'Add the attributes your ABAC rooms carry, or load the US-Government example to see a complete configuration.'),
 		));
@@ -796,13 +965,118 @@ const renderAttributes = () => {
 	host.replaceChildren(...config.attributes.map(renderAttribute));
 };
 
+const isDefaultEntry = ({ enabled, match }) => enabled && !match;
+
+const renderNonAbacEntry = (entry, index, entries, isDefault) => {
+	const move = (delta) => moveItem(entries, index, delta);
+	const remove = () => {
+		entries.splice(index, 1);
+		if (!entries.length) delete config.nonAbacBanner;
+		update();
+	};
+	const toggleType = (type, checked) => {
+		const types = ROOM_TYPES.map(([value]) => value).filter((value) => (value === type ? checked : entry.match.type?.includes(value)));
+		if (types.length) entry.match.type = types;
+		else delete entry.match.type;
+		update();
+	};
+	const flagSelect = (key, labelText, hint) => {
+		const current = entry.match[key] === undefined ? '' : entry.match[key] ? 'yes' : 'no';
+		return field(labelText, el('select', {
+			onchange: (e) => {
+				if (e.target.value) entry.match[key] = e.target.value === 'yes';
+				else delete entry.match[key];
+				update();
+			},
+		}, ...[['', 'Any'], ['yes', 'Yes'], ['no', 'No']].map(([value, text]) => el('option', { value, selected: value === current }, text))), hint);
+	};
+
+	return el('div', { className: 'attr' },
+		el('div', { className: 'attr-head' },
+			el('button', { className: 'ghost', title: 'Move up (matched entries are tried in list order)', 'aria-label': 'Move banner up', disabled: index === 0, onclick: () => move(-1) }, '↑'),
+			el('button', { className: 'ghost', title: 'Move down (matched entries are tried in list order)', 'aria-label': 'Move banner down', disabled: index === entries.length - 1, onclick: () => move(1) }, '↓'),
+			el('b', {}, entry.text || 'Untitled'),
+			el('div', { className: 'flags' },
+				isDefault && el('span', { className: 'tag color-driver', title: 'Shown in non-ABAC rooms that no other enabled entry matches' }, 'default'),
+				!entry.enabled && el('span', { className: 'tag' }, 'disabled'),
+				el('button', { className: 'danger-ghost', onclick: remove }, 'Remove'),
+			),
+		),
+		el('div', { className: entry.match ? 'attr-fields grid' : 'values grid' },
+			field('Text', el('input', { type: 'text', value: entry.text, oninput: (e) => { entry.text = e.target.value; update(false); } }),
+				'Banner text for these rooms. The global uppercase and monospace options apply.'),
+			field('Color', el('div', { className: 'swatch-cell' },
+				el('input', { type: 'color', value: entry.color, oninput: (e) => { entry.color = e.target.value; update(false); } }),
+				el('span', { className: 'hex' }, entry.color))),
+			field('Applies to', el('select', {
+				onchange: (e) => {
+					if (e.target.value === 'match') entry.match = { type: ['direct'] };
+					else delete entry.match;
+					update();
+				},
+			},
+				el('option', { value: 'any', selected: !entry.match }, 'Any room'),
+				el('option', { value: 'match', selected: !!entry.match }, 'Rooms matching conditions'),
+			), 'The first enabled entry for any room is the default, used when no matching entry fits.'),
+			el('div', {},
+				check('Enabled', { checked: entry.enabled, onchange: (e) => { entry.enabled = e.target.checked; update(); } },
+					'Disabled entries stay in the JSON but are never shown.'),
+			),
+		),
+		entry.match && el('div', { className: 'values grid' },
+			el('div', { className: 'field' },
+				el('span', { className: 'fname' }, 'Room type'),
+				el('div', { className: 'choices' },
+					...ROOM_TYPES.map(([value, text]) => check(text, { checked: !!entry.match.type?.includes(value), onchange: (e) => toggleType(value, e.target.checked) }))),
+				el('span', { className: 'fhint' }, 'None checked means any type.'),
+			),
+			flagSelect('federated', 'Federated', 'Rooms shared with another server.'),
+			flagSelect('discussion', 'Discussion', 'Discussions started from a room or a message.'),
+			flagSelect('team', 'Team', 'A team’s main room or a room inside a team.'),
+		),
+	);
+};
+
+const renderNonAbac = () => {
+	$('#non-abac-card').hidden = !supportsNonAbac();
+	const entries = config.nonAbacBanner ?? [];
+	const defaultIndex = entries.findIndex(isDefaultEntry);
+	$('#btn-add-non-abac').textContent = defaultIndex === -1 ? 'Add default banner' : 'Add banner for specific rooms';
+	if (!entries.length) {
+		$('#non-abac').replaceChildren(el('div', { className: 'empty-state' },
+			el('p', {}, el('b', {}, 'No non-ABAC banners.')),
+			el('p', {}, 'Rooms that are not ABAC managed show no banner. Add a default banner to cover them.'),
+		));
+		return;
+	}
+	$('#non-abac').replaceChildren(...entries.map((entry, index) => renderNonAbacEntry(entry, index, entries, index === defaultIndex)));
+};
+
+const ROOM_FLAGS = [['federated', 'Federated'], ['discussion', 'Discussion'], ['team', 'In a team']];
+
+const renderRoomPicker = () => {
+	const flags = { public: ROOM_FLAGS, private: ROOM_FLAGS, direct: ROOM_FLAGS.slice(0, 1) }[simRoom.kind] ?? [];
+	return el('div', { className: 'sim-room' },
+		field('Room', el('select', { onchange: (e) => { simRoom = { ...defaultRoom(), kind: e.target.value }; update(); } },
+			...ROOM_KINDS.map(([kind, text]) => el('option', { value: kind, selected: kind === simRoom.kind }, text)))),
+		flags.length > 0 && el('div', { className: 'choices' },
+			...flags.map(([key, text]) =>
+				check(text, { checked: simRoom[key], onchange: (e) => { simRoom[key] = e.target.checked; update(); } }))),
+	);
+};
+
 const renderSimulation = () => {
 	const host = $('#sim');
+	if (simRoom.kind !== 'abac') {
+		host.replaceChildren(renderRoomPicker());
+		return;
+	}
 	if (!config.attributes.length) {
-		host.replaceChildren(el('p', { className: 'hint' }, 'Add an attribute first — its values become pickable here.'));
+		host.replaceChildren(renderRoomPicker(), el('p', { className: 'hint' }, 'Add an attribute first — its values become pickable here.'));
 		return;
 	}
 	host.replaceChildren(
+		renderRoomPicker(),
 		...config.attributes.map((attribute, groupIndex) => {
 			const selected = simulation[attribute.source] ?? [];
 			const available = attribute.values.filter((v) => v.source && !selected.includes(v.source));
@@ -849,7 +1123,7 @@ const renderSimulation = () => {
 };
 
 const renderWarnings = () => {
-	const problems = lintConfig(config);
+	const problems = lintConfig(exportedConfig());
 	const box = $('#warnings');
 	if (!config.attributes.length) {
 		box.className = 'info';
@@ -870,14 +1144,18 @@ const renderWarnings = () => {
 	box.className = 'ok';
 	box.replaceChildren(
 		el('h3', {}, 'Configuration passes all cross-field rules'),
-		el('ul', { className: 'rules' }, ...RULES.map((r) => el('li', {}, r))),
+		el('ul', { className: 'rules' }, ...[...RULES, ...(supportsNonAbac() && config.nonAbacBanner ? NON_ABAC_RULES : [])].map((r) => el('li', {}, r))),
 		el('p', { className: 'rules-note' },
-			'These rules are part of the v1 contract on top of the JSON Schema. Rocket.Chat currently validates JSON syntax on save; rule enforcement ships separately — this builder is the guardrail until then.'),
+			'Rocket.Chat checks the document against the JSON Schema when the setting is saved. Rules the schema cannot express, such as a single color driver and unique ids, are only checked here.'),
 	);
 };
 
 const renderJson = () => {
-	$('#json-out').value = JSON.stringify(config, null, 2);
+	$('#json-out').value = JSON.stringify(exportedConfig(), null, 2);
+};
+
+const renderSchemaToggle = () => {
+	document.querySelectorAll('[data-schema]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.schema === schemaVersion)));
 };
 
 const update = (rebuildForms = true) => {
@@ -886,8 +1164,10 @@ const update = (rebuildForms = true) => {
 	renderWarnings();
 	renderJson();
 	if (rebuildForms) {
+		renderSchemaToggle();
 		renderBannerOptions();
 		renderAttributes();
+		renderNonAbac();
 		renderSimulation();
 	}
 };
@@ -912,6 +1192,20 @@ themeButton.addEventListener('click', () => {
 	renderThemeButton();
 });
 renderThemeButton();
+
+document.querySelectorAll('[data-schema]').forEach((button) =>
+	button.addEventListener('click', () => {
+		schemaVersion = button.dataset.schema;
+		update();
+	}),
+);
+
+const showNotice = (text) => {
+	$('#notice-text').textContent = text;
+	$('#notice').hidden = false;
+};
+const hideNotice = () => { $('#notice').hidden = true; };
+$('#notice-close').addEventListener('click', hideNotice);
 
 const hasWorkInProgress = () => Object.keys(simulation).length > 0 || JSON.stringify(config) !== JSON.stringify(emptyConfig());
 
@@ -941,9 +1235,20 @@ $('#btn-example').addEventListener('click', () =>
 	confirmReplace('Loading the example will replace your current configuration and simulated room values.', () => {
 		config = exampleConfig();
 		simulation = { 'clearance.level': ['TS'], 'access.programs': ['SAP-1042', 'SAP-2271', 'SAP-3380'], 'dissem.relto': ['USA'] };
+		simRoom = defaultRoom();
+		hideNotice();
 		update();
 	}),
 );
+
+$('#btn-add-non-abac').addEventListener('click', () => {
+	const entries = (config.nonAbacBanner ??= []);
+	entries.push(entries.some(isDefaultEntry)
+		? { enabled: true, text: '', color: '#6C727A', match: { type: ['direct'] } }
+		: { enabled: true, text: 'UNCLASSIFIED', color: '#007a33' });
+	update();
+	document.querySelector('#non-abac .attr:last-of-type input[type=text]')?.focus();
+});
 
 $('#btn-add-attr').addEventListener('click', () => {
 	config.attributes.push({
@@ -975,11 +1280,21 @@ $('#import-apply').addEventListener('click', () => {
 		if (parsed?.version !== 1 || !Array.isArray(parsed.attributes) || typeof parsed.banner?.delimiter !== 'string') {
 			throw new Error('Not a version 1 classification banners document.');
 		}
-		parsed.banner.style = 'classic';
+		const notes = [];
+		if (parsed.banner.style !== 'classic') {
+			notes.push(`Banner style “${parsed.banner.style}” is not allowed by the schema and was changed to classic.`);
+			parsed.banner.style = 'classic';
+		}
+		if (parsed.nonAbacBanner && !supportsNonAbac()) {
+			schemaVersion = '9.0';
+			notes.push('This document has non-ABAC banners, which need Rocket.Chat 9.0 or later, so the builder switched to 9.0+.');
+		}
 		config = parsed;
 		simulation = {};
 		importDialog.close();
+		hideNotice();
 		update();
+		if (notes.length) showNotice(notes.join(' '));
 	} catch (error) {
 		$('#import-error').textContent = error instanceof SyntaxError ? 'Invalid JSON.' : error.message;
 	}
