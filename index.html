@@ -83,7 +83,6 @@
 	}
 	#preview-banner.mono { font-family: var(--mono); letter-spacing: 0.02em; }
 	#preview-banner.uppercase { text-transform: uppercase; }
-	#preview-banner .rule { width: 1px; height: 60%; margin: 0 14px; opacity: 0.45; }
 	#preview-chrome {
 		background: var(--room);
 		border-bottom: 1px solid var(--line-soft);
@@ -299,7 +298,7 @@
 	<div>
 		<section class="card">
 			<h2>Banner options</h2>
-			<div class="card-hint">Global settings for the strip itself — how segments are joined, positioned, colored and typeset.</div>
+			<div class="card-hint">Global settings for the strip itself — how segments are joined, colored and typeset.</div>
 			<div class="card-body grid" id="banner-options"></div>
 		</section>
 
@@ -392,11 +391,7 @@
 				<b>Fallback</b> — when no attribute produces a segment, the banner renders <code>banner.fallbackText</code> on
 				<code>banner.fallbackColor</code>.
 			</li>
-			<li>
-				<b>Styles</b> (<code>banner.style</code>) — <code>classic</code>: single centered line; <code>segmented</code>:
-				segments separated by vertical rules instead of the delimiter; <code>edge</code>: classic with contrasting
-				top/bottom edge rules.
-			</li>
+			<li><b>Style</b> — <code>banner.style</code> must be <code>classic</code>, a single centered line.</li>
 			<li>The banner always renders above the room header.</li>
 			<li>Config changes require no server restart and propagate to open clients live via settings sync.</li>
 		</ul>
@@ -445,18 +440,20 @@
 <script>
 'use strict';
 
-// ---- engine (mirrors @rocket.chat/abac classification-banners/engine.ts) ----
+// ---- engine (mirrors @rocket.chat/abac classification-banner/engine.ts and colors.ts) ----
 
 const readableTextColor = (hex) => {
-	const [r, g, b] = [0, 2, 4].map((offset) => parseInt(hex.replace('#', '').slice(offset, offset + 2), 16) / 255);
-	const linearize = (channel) => (channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4);
-	const luminance = 0.2126 * linearize(r) + 0.7152 * linearize(g) + 0.0722 * linearize(b);
-	return luminance > 0.55 ? '#1F2329' : '#FFFFFF';
-};
-
-const shade = (hex, factor) => {
-	const [r, g, b] = [0, 2, 4].map((offset) => Math.round(parseInt(hex.replace('#', '').slice(offset, offset + 2), 16) * factor));
-	return `rgb(${r}, ${g}, ${b})`;
+	const luminanceOf = (color) => {
+		const [r, g, b] = [0, 2, 4].map((offset) => parseInt(color.replace('#', '').slice(offset, offset + 2), 16) / 255);
+		const linearize = (channel) => (channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4);
+		return 0.2126 * linearize(r) + 0.7152 * linearize(g) + 0.0722 * linearize(b);
+	};
+	const background = luminanceOf(hex);
+	const contrastWith = (ink) => {
+		const text = luminanceOf(ink);
+		return (Math.max(background, text) + 0.05) / (Math.min(background, text) + 0.05);
+	};
+	return contrastWith('#1F2329') >= contrastWith('#FFFFFF') ? '#1F2329' : '#FFFFFF';
 };
 
 const buildSegment = (attribute, roomAttributes) => {
@@ -574,6 +571,7 @@ const loadStoredConfig = () => {
 	try {
 		const stored = JSON.parse(localStorage.getItem(CONFIG_KEY));
 		if (stored?.version === 1 && Array.isArray(stored.attributes) && typeof stored.banner?.delimiter === 'string') {
+			stored.banner.style = 'classic';
 			return stored;
 		}
 	} catch { /* corrupt or unavailable storage — start fresh */ }
@@ -661,21 +659,11 @@ const check = (labelText, props, hint) =>
 const renderPreview = () => {
 	const banner = buildClassificationBanner(config, Object.entries(simulation).map(([key, values]) => ({ key, values })));
 	const strip = $('#preview-banner');
-	strip.replaceChildren();
 	strip.className = `${banner.uppercase ? 'uppercase' : ''} ${banner.monospace ? 'mono' : ''}`;
 	strip.style.background = banner.backgroundColor;
 	strip.style.color = banner.color;
-	strip.style.borderTop = strip.style.borderBottom =
-		banner.style === 'edge' ? `3px solid ${banner.color === '#FFFFFF' ? shade(banner.backgroundColor, 0.6) : 'rgba(0, 0, 0, 0.28)'}` : 'none';
 	strip.setAttribute('aria-label', banner.text);
-	if (banner.style === 'segmented' && banner.segments.length > 0) {
-		banner.segments.forEach((segment, index) => {
-			if (index > 0) strip.append(el('span', { className: 'rule', style: `background:${banner.color}` }));
-			strip.append(el('span', {}, segment.text));
-		});
-	} else {
-		strip.append(el('span', {}, banner.text));
-	}
+	strip.replaceChildren(el('span', {}, banner.text));
 	$('#preview-position').textContent = `style: ${banner.style}${config.enabled ? '' : ' · disabled'}`;
 };
 
@@ -685,12 +673,8 @@ const renderBannerOptions = () => {
 		el('select', { onchange: (e) => { onchange(e.target.value); update(); } },
 			...options.map(([v, text]) => el('option', { value: v, selected: v === value }, text)));
 	$('#banner-options').replaceChildren(
-		field('Style', select(banner.style, [['classic', 'Classic'], ['segmented', 'Segmented'], ['edge', 'Edge']], (v) => { banner.style = v; }),
-			'Classic: one line, segments joined by the delimiter text. Segmented: the delimiter is replaced by vertical divider rules. Edge: same as classic plus contrasting top/bottom border rules.'),
-		field('Segment delimiter', el('input', { type: 'text', className: 'mono', maxLength: 8, value: banner.delimiter, disabled: banner.style === 'segmented', oninput: (e) => { banner.delimiter = e.target.value; update(false); } }),
-			banner.style === 'segmented'
-				? 'Not used by the segmented style — segments are separated by vertical rules instead of text.'
-				: 'Text placed between segments (max 8 characters). The US-Gov convention is “ // ”. Used by the classic and edge styles.'),
+		field('Segment delimiter', el('input', { type: 'text', className: 'mono', maxLength: 8, value: banner.delimiter, oninput: (e) => { banner.delimiter = e.target.value; update(false); } }),
+			'Text placed between segments (max 8 characters). The US-Gov convention is “ // ”.'),
 		field('Color mode', select(banner.colorMode, [['highest', 'Most restrictive value'], ['attribute', 'First room value']], (v) => { banner.colorMode = v; }),
 			'Which matched value of the color-driving attribute paints the banner. “Most restrictive” = the highest-ranked match (index 0 = highest); “first room value” follows the order the room lists its values.'),
 		field('Fallback text', el('input', { type: 'text', value: banner.fallbackText, oninput: (e) => { banner.fallbackText = e.target.value; update(false); } }),
@@ -991,6 +975,7 @@ $('#import-apply').addEventListener('click', () => {
 		if (parsed?.version !== 1 || !Array.isArray(parsed.attributes) || typeof parsed.banner?.delimiter !== 'string') {
 			throw new Error('Not a version 1 classification banners document.');
 		}
+		parsed.banner.style = 'classic';
 		config = parsed;
 		simulation = {};
 		importDialog.close();
