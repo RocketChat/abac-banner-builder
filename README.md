@@ -26,6 +26,10 @@ npx serve .
 - **Non-ABAC banner editor** (9.0+): ordered entries with text, color, enabled and an optional room match on type, federated, discussion and team. The first enabled entry without a match is the default.
 - **Room simulator**: an ABAC room with picked attribute values, or a public channel, private group, DM or Omnichannel room with federated, discussion and team flags.
 - **Cross-field lint** (warn-only): one `drivesColor`, unique ids/sources, `multipleLabel` with `groupThreshold`, `bannerLabel` with `showLabel`, and in 9.0+ an enabled default non-ABAC entry and non-empty room matches.
-- **Import / copy JSON** in the shape of the published v1 schema contract (`https://rocket.chat/schemas/classification-banners/v1.json`). The schema allows only the `classic` banner style; imported documents with another style are switched to it.
+- **Import / copy JSON**, validated against the published v1 schema contract (`https://rocket.chat/schemas/classification-banners/v1.json`):
+  - A document the builder cannot display (wrong JSON types, missing required fields, a version other than 1) stays in the import dialog with a list of problems, so you can fix it there and import again.
+  - Any other schema violation (bad colors, empty text, unknown keys, ...) loads as written and is listed under **Fix before saving**; unknown keys get a **Remove** button.
+  - The schema allows only the `classic` banner style; imported documents with another style are switched to it.
+  - A saved configuration that can no longer be loaded is kept, and a notice offers to open it in the import dialog.
 
-The configuration document is described by the schema in the Rocket.Chat repository: `ee/packages/abac/docs/classification-banners.schema.json`.
+The configuration document is described by the schema in the Rocket.Chat repository: `ee/packages/abac/docs/classification-banners.schema.json`. `index.html` embeds a verbatim copy of it (`SCHEMA`) and validates with a small built-in validator, so the page still works offline. When the schema changes in Rocket.Chat, paste the new file into `SCHEMA`; the validator throws on any JSON Schema keyword it does not support yet.

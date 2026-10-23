@@ -278,7 +278,9 @@
 	.docs-body code { font-family: var(--mono); font-size: 11px; background: var(--wash); padding: 1px 4px; border-radius: 3px; }
 	dialog textarea { height: 260px; }
 	dialog .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 10px; }
-	dialog .error { color: var(--danger); font-size: 12px; margin-top: 6px; }
+	dialog .error { color: var(--danger); font-size: 12px; margin-top: 6px; max-height: 160px; overflow-y: auto; }
+	dialog .error ul { margin: 4px 0 0 18px; }
+	#warnings li button { margin-left: 6px; padding: 0 6px; font-size: 11px; }
 </style>
 </head>
 <body>
@@ -314,6 +316,7 @@
 	</p>
 	<div id="notice" role="status" hidden>
 		<span id="notice-text"></span>
+		<button id="notice-action" hidden></button>
 		<button class="ghost" id="notice-close" aria-label="Dismiss notice">✕</button>
 	</div>
 </header>
@@ -663,20 +666,249 @@ const ROOM_TYPES = [['direct', 'Direct / group DM'], ['public', 'Public'], ['pri
 
 const defaultRoom = () => ({ kind: 'abac', federated: false, discussion: false, team: false });
 
+// ---- schema (verbatim copy of ee/packages/abac/docs/classification-banners.schema.json; paste the new file in when it changes) ----
+
+const SCHEMA = {
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "https://rocket.chat/schemas/classification-banners/v1.json",
+	"title": "Rocket.Chat Classification Banners configuration",
+	"type": "object",
+	"required": ["version", "enabled", "banner", "attributes"],
+	"additionalProperties": false,
+	"properties": {
+		"$schema": { "type": "string" },
+		"version": { "const": 1 },
+		"enabled": { "type": "boolean" },
+		"banner": {
+			"type": "object",
+			"required": ["style", "uppercase", "monospace", "delimiter", "colorMode", "fallbackText", "fallbackColor"],
+			"additionalProperties": false,
+			"properties": {
+				"style": { "enum": ["classic"] },
+				"uppercase": { "type": "boolean" },
+				"monospace": { "type": "boolean" },
+				"delimiter": { "type": "string", "minLength": 1, "maxLength": 8 },
+				"colorMode": { "enum": ["highest", "attribute"] },
+				"fallbackText": { "type": "string", "minLength": 1 },
+				"fallbackColor": { "$ref": "#/$defs/hexColor" }
+			}
+		},
+		"nonAbacBanner": {
+			"description": "Banners for rooms that are not ABAC managed, such as DMs, group DMs, discussions and federated rooms. The first enabled entry whose match fits the room is shown. At least one enabled entry must have no match; the first of them is the default, shown when no other enabled entry matches, wherever it sits in the list. When absent, the room shows no banner. Omnichannel (livechat) rooms are not affected by this setting and never show a banner",
+			"type": "array",
+			"minItems": 1,
+			"items": { "$ref": "#/$defs/nonAbacBanner" },
+			"contains": {
+				"type": "object",
+				"properties": { "enabled": { "const": true } },
+				"not": { "type": "object", "required": ["match"] }
+			}
+		},
+		"attributes": {
+			"type": "array",
+			"minItems": 1,
+			"uniqueItems": true,
+			"description": "Attribute ids must be unique across entries (uniqueness by id is not expressible in JSON Schema; validated by tooling)",
+			"items": { "$ref": "#/$defs/attribute" }
+		}
+	},
+	"$defs": {
+		"hexColor": {
+			"type": "string",
+			"pattern": "^#[0-9a-fA-F]{6}$"
+		},
+		"nonAbacBanner": {
+			"type": "object",
+			"required": ["enabled", "text", "color"],
+			"additionalProperties": false,
+			"properties": {
+				"enabled": { "type": "boolean" },
+				"text": { "type": "string", "minLength": 1 },
+				"color": { "$ref": "#/$defs/hexColor" },
+				"match": { "$ref": "#/$defs/roomMatch" }
+			}
+		},
+		"roomMatch": {
+			"type": "object",
+			"description": "Every property given must hold for the room; an omitted property matches any room. At least one property is required; an entry that applies to any room omits match instead",
+			"additionalProperties": false,
+			"minProperties": 1,
+			"properties": {
+				"type": {
+					"type": "array",
+					"minItems": 1,
+					"uniqueItems": true,
+					"items": { "enum": ["direct", "public", "private"] }
+				},
+				"federated": { "type": "boolean" },
+				"discussion": { "type": "boolean" },
+				"team": { "type": "boolean", "description": "A team's own room or a room that belongs to a team" }
+			}
+		},
+		"attribute": {
+			"type": "object",
+			"required": [
+				"id",
+				"source",
+				"label",
+				"showInBanner",
+				"showLabel",
+				"bannerLabel",
+				"labelSeparator",
+				"valueSeparator",
+				"sortAlpha",
+				"groupThreshold",
+				"multipleLabel",
+				"drivesColor",
+				"values"
+			],
+			"additionalProperties": false,
+			"properties": {
+				"id": { "type": "string", "pattern": "^[a-z][a-z0-9_-]*$" },
+				"source": { "type": "string", "minLength": 1, "description": "Raw attribute key from the IdP (SAML/LDAP)" },
+				"label": { "type": "string", "minLength": 1, "description": "Friendly admin-facing name" },
+				"showInBanner": { "type": "boolean" },
+				"showLabel": { "type": "boolean" },
+				"bannerLabel": { "type": "string" },
+				"labelSeparator": { "enum": ["-", " ", ""] },
+				"valueSeparator": { "enum": ["/", ", ", " "] },
+				"sortAlpha": { "type": "boolean" },
+				"groupThreshold": {
+					"type": "integer",
+					"description": "0 = never collapse; otherwise collapse when value count >= threshold (2-20)",
+					"oneOf": [{ "const": 0 }, { "minimum": 2, "maximum": 20 }]
+				},
+				"multipleLabel": { "type": "string" },
+				"drivesColor": { "type": "boolean" },
+				"values": {
+					"type": "array",
+					"minItems": 1,
+					"uniqueItems": true,
+					"description": "Value sources must be unique within the attribute (uniqueness by source is not expressible in JSON Schema; validated by tooling)",
+					"items": {
+						"type": "object",
+						"required": ["source", "label", "color"],
+						"additionalProperties": false,
+						"properties": {
+							"source": { "type": "string", "minLength": 1 },
+							"label": { "type": "string", "minLength": 1 },
+							"color": { "$ref": "#/$defs/hexColor" }
+						}
+					}
+				}
+			}
+		}
+	}
+};
+
+const SCHEMA_KEYWORDS = new Set([
+	'$schema', '$id', '$defs', '$ref', 'title', 'description', 'type', 'const', 'enum', 'oneOf', 'not',
+	'minLength', 'maxLength', 'pattern', 'minimum', 'maximum',
+	'minItems', 'uniqueItems', 'items', 'contains', 'required', 'properties', 'additionalProperties', 'minProperties',
+]);
+
+const SCHEMA_MESSAGES = {
+	'#/$defs/hexColor': 'must be a 6-digit hex color such as #1f2329',
+	'nonAbacBanner contains': 'need an enabled entry that applies to any room: it is the default when no other entry matches',
+	'groupThreshold oneOf': 'must be 0 or between 2 and 20',
+	'match minProperties': 'must set at least one room condition, or the entry should apply to any room',
+};
+
+const TYPE_NAMES = { object: 'an object', array: 'a list', string: 'a string', boolean: 'true or false', integer: 'a whole number', number: 'a number', null: 'null' };
+
+const typeOf = (value) => (value === null ? 'null' : Array.isArray(value) ? 'array' : Number.isInteger(value) ? 'integer' : typeof value);
+const hasType = (value, type) => (type === 'number' ? typeof value === 'number' : type === 'integer' ? Number.isInteger(value) : typeOf(value) === type);
+
+const validateSchema = (value, schema = SCHEMA, path = []) => {
+	const unsupported = Object.keys(schema).find((keyword) => !SCHEMA_KEYWORDS.has(keyword));
+	if (unsupported) throw new Error(`Unsupported JSON Schema keyword: ${unsupported}`);
+	if (schema.$ref) {
+		const errors = validateSchema(value, schema.$ref.split('/').slice(1).reduce((node, key) => node[key], SCHEMA), path);
+		return errors.length && SCHEMA_MESSAGES[schema.$ref] ? [{ ...errors[0], message: SCHEMA_MESSAGES[schema.$ref] }] : errors;
+	}
+	const errors = [];
+	const fail = (keyword, message, at = path) =>
+		errors.push({ keyword, path: at, message: SCHEMA_MESSAGES[`${at.findLast((key) => typeof key === 'string')} ${keyword}`] ?? message });
+	const passes = (subschema, item = value) => !validateSchema(item, subschema, path).length;
+	if (schema.type && !hasType(value, schema.type)) {
+		fail('type', `must be ${TYPE_NAMES[schema.type]}, found ${TYPE_NAMES[typeOf(value)]}`);
+		return errors;
+	}
+	if ('const' in schema && value !== schema.const) fail('const', `must be ${JSON.stringify(schema.const)}`);
+	if (schema.enum && !schema.enum.includes(value)) fail('enum', `must be one of ${schema.enum.map((option) => JSON.stringify(option)).join(', ')}`);
+	if (schema.oneOf && schema.oneOf.filter((subschema) => passes(subschema)).length !== 1) fail('oneOf', 'does not match exactly one allowed form');
+	if (schema.not && passes(schema.not)) fail('not', 'matches a form the schema rules out');
+	if (typeof value === 'string') {
+		if (value.length < schema.minLength) fail('minLength', schema.minLength === 1 ? 'must not be empty' : `must be at least ${schema.minLength} characters`);
+		if (value.length > schema.maxLength) fail('maxLength', `must be at most ${schema.maxLength} characters`);
+		if (schema.pattern && !new RegExp(schema.pattern, 'u').test(value)) fail('pattern', `must match ${schema.pattern}`);
+	}
+	if (typeof value === 'number') {
+		if (value < schema.minimum) fail('minimum', `must be at least ${schema.minimum}`);
+		if (value > schema.maximum) fail('maximum', `must be at most ${schema.maximum}`);
+	}
+	if (Array.isArray(value)) {
+		if (value.length < schema.minItems) fail('minItems', schema.minItems === 1 ? 'must not be empty' : `must have at least ${schema.minItems} items`);
+		if (schema.uniqueItems && new Set(value.map((item) => JSON.stringify(item))).size !== value.length) fail('uniqueItems', 'must not contain duplicate items');
+		if (schema.contains && !value.some((item) => passes(schema.contains, item))) fail('contains', 'must contain a matching item');
+		if (schema.items) value.forEach((item, index) => errors.push(...validateSchema(item, schema.items, [...path, index])));
+	}
+	if (typeOf(value) === 'object') {
+		const properties = schema.properties ?? {};
+		(schema.required ?? []).filter((key) => !Object.hasOwn(value, key)).forEach((key) => fail('required', 'is required', [...path, key]));
+		if (Object.keys(value).length < schema.minProperties) fail('minProperties', `must set at least ${schema.minProperties} properties`);
+		for (const [key, child] of Object.entries(value)) {
+			if (Object.hasOwn(properties, key)) errors.push(...validateSchema(child, properties[key], [...path, key]));
+			else if (schema.additionalProperties === false) fail('additionalProperties', 'is not part of the schema', [...path, key]);
+		}
+	}
+	return errors;
+};
+
+const isStructural = ({ keyword, path }) => keyword === 'type' || keyword === 'required' || (keyword === 'const' && path.join('.') === 'version');
+
+const structuralErrors = (doc) => validateSchema(doc).filter(isStructural);
+
+const describePath = (doc, path) => {
+	const [head, index, ...rest] = path;
+	const at = (name, keys) => (keys.length ? `${name}: ${keys.join('.')}` : name);
+	if (head === 'attributes' && typeof index === 'number') {
+		const { id } = doc.attributes[index] ?? {};
+		const name = `Attribute ${typeof id === 'string' && id ? `“${id}”` : index + 1}`;
+		return rest[0] === 'values' && typeof rest[1] === 'number' ? at(`${name}, value ${rest[1] + 1}`, rest.slice(2)) : at(name, rest);
+	}
+	if (head === 'nonAbacBanner' && typeof index === 'number') return at(`Non-ABAC banner ${index + 1}`, rest);
+	return { attributes: 'Attributes', nonAbacBanner: 'Non-ABAC banners' }[path.join('.')] ?? (path.join('.') || 'The document');
+};
+
+const describeError = (doc, { path, message }) => `${describePath(doc, path)} ${message}.`;
+
 const CONFIG_KEY = 'cb-config';
 const SIMULATION_KEY = 'cb-simulation';
 const ROOM_KEY = 'cb-room';
 const SCHEMA_KEY = 'cb-schema';
+const UNLOADABLE_KEY = 'cb-config-unloadable';
+
+const readStorage = (key) => {
+	try {
+		return localStorage.getItem(key);
+	} catch {
+		return null;
+	}
+};
 
 const loadStoredConfig = () => {
+	const raw = readStorage(CONFIG_KEY);
+	if (raw === null) return emptyConfig();
 	try {
-		const stored = JSON.parse(localStorage.getItem(CONFIG_KEY));
-		if (stored?.version === 1 && Array.isArray(stored.attributes) && typeof stored.banner?.delimiter === 'string') {
+		const stored = JSON.parse(raw);
+		if (!structuralErrors(stored).length) {
 			stored.banner.style = 'classic';
 			return stored;
 		}
-	} catch { /* corrupt or unavailable storage — start fresh */ }
-	return null;
+	} catch { /* invalid JSON is kept for recovery below */ }
+	try { localStorage.setItem(UNLOADABLE_KEY, raw); } catch { /* storage unavailable — nothing to recover later */ }
+	return emptyConfig();
 };
 
 const loadStoredRoom = () => {
@@ -716,7 +948,7 @@ const persist = () => {
 	} catch { /* storage unavailable (e.g. file://) — work is session-only */ }
 };
 
-let config = loadStoredConfig() ?? emptyConfig();
+let config = loadStoredConfig();
 let simulation = loadStoredSimulation();
 let simRoom = loadStoredRoom();
 let schemaVersion = loadStoredSchema();
@@ -729,57 +961,43 @@ const exportedConfig = () => {
 	return { ...head, ...(supportsNonAbac() && nonAbacBanner && { nonAbacBanner }), attributes };
 };
 
-// ---- cross-field rules (documented in the v1 schema; enforced here as warnings) ----
+// ---- rules: the JSON Schema, plus the cross-field rules it cannot express ----
 
 const RULES = [
+	'Matches the JSON Schema Rocket.Chat checks when the setting is saved',
 	'Exactly one attribute drives the banner color',
-	'Attribute ids are unique and lowercase (^[a-z][a-z0-9_-]*$)',
-	'Every attribute has a source key, a label and at least one value',
-	'Value sources are unique within each attribute, each with a label and a color',
+	'Attribute ids are unique, and value sources are unique within each attribute',
 	'A grouped label is set wherever a group threshold is set',
 	'A banner label is set wherever “show label prefix” is on',
-	'A segment delimiter is set',
-];
-
-const NON_ABAC_RULES = [
-	'Non-ABAC banners include an enabled default entry that applies to any room',
-	'Every non-ABAC banner has text, and every room match sets at least one condition',
 ];
 
 const lintConfig = (cfg) => {
 	const problems = [];
-	if (!cfg.attributes.length) {
-		problems.push('At least one attribute is required.');
-		return problems;
-	}
 	const drivers = cfg.attributes.filter((a) => a.drivesColor);
 	if (drivers.length !== 1) problems.push(`Exactly one attribute must have “drives color” — currently ${drivers.length}.`);
 	const ids = cfg.attributes.map((a) => a.id);
 	if (new Set(ids).size !== ids.length) problems.push('Attribute ids must be unique.');
 	for (const a of cfg.attributes) {
-		if (!/^[a-z][a-z0-9_-]*$/.test(a.id)) problems.push(`Attribute id “${a.id}” must match ^[a-z][a-z0-9_-]*$.`);
-		if (!a.source) problems.push(`Attribute “${a.id}”: source key is required.`);
-		if (!a.label) problems.push(`Attribute “${a.id}”: label is required.`);
 		const sources = a.values.map((v) => v.source);
 		if (new Set(sources).size !== sources.length) problems.push(`Attribute “${a.id}”: value sources must be unique.`);
-		if (!a.values.length) problems.push(`Attribute “${a.id}”: at least one value is required.`);
-		if (a.values.some((v) => !v.source || !v.label)) problems.push(`Attribute “${a.id}”: every value needs a source and a label.`);
 		if (a.groupThreshold > 0 && !a.multipleLabel) problems.push(`Attribute “${a.id}”: a grouped label is required when the group threshold is set.`);
-		if (a.groupThreshold !== 0 && (a.groupThreshold < 2 || a.groupThreshold > 20)) problems.push(`Attribute “${a.id}”: group threshold must be 0 or between 2 and 20.`);
 		if (a.showLabel && !a.bannerLabel) problems.push(`Attribute “${a.id}”: a banner label is required when “show label prefix” is on.`);
-	}
-	if (!cfg.banner.delimiter) problems.push('A segment delimiter is required.');
-	if (cfg.nonAbacBanner) {
-		if (!cfg.nonAbacBanner.some(isDefaultEntry)) {
-			problems.push('Non-ABAC banners need an enabled entry that applies to any room: it is the default when no other entry matches.');
-		}
-		cfg.nonAbacBanner.forEach((entry, index) => {
-			if (!entry.text) problems.push(`Non-ABAC banner ${index + 1}: text is required.`);
-			if (entry.match && !Object.keys(entry.match).length) problems.push(`Non-ABAC banner ${index + 1}: set at least one room condition, or make it apply to any room.`);
-		});
 	}
 	return problems;
 };
+
+const removeAt = (path) => {
+	const parent = path.slice(0, -1).reduce((node, key) => node[key], config);
+	delete parent[path.at(-1)];
+};
+
+const configProblems = (doc) => [
+	...validateSchema(doc).map((error) => ({
+		text: describeError(doc, error),
+		fix: error.keyword === 'additionalProperties' ? () => removeAt(error.path) : undefined,
+	})),
+	...lintConfig(doc).map((text) => ({ text })),
+];
 
 // ---- rendering ----
 
@@ -1123,7 +1341,7 @@ const renderSimulation = () => {
 };
 
 const renderWarnings = () => {
-	const problems = lintConfig(exportedConfig());
+	const problems = configProblems(exportedConfig());
 	const box = $('#warnings');
 	if (!config.attributes.length) {
 		box.className = 'info';
@@ -1137,16 +1355,17 @@ const renderWarnings = () => {
 		box.className = '';
 		box.replaceChildren(
 			el('h3', {}, `Fix before saving (${problems.length})`),
-			el('ul', {}, ...problems.map((p) => el('li', {}, p))),
+			el('ul', {}, ...problems.map(({ text, fix }) => el('li', {}, text,
+				fix && el('button', { onclick: () => { fix(); update(); } }, 'Remove')))),
 		);
 		return;
 	}
 	box.className = 'ok';
 	box.replaceChildren(
-		el('h3', {}, 'Configuration passes all cross-field rules'),
-		el('ul', { className: 'rules' }, ...[...RULES, ...(supportsNonAbac() && config.nonAbacBanner ? NON_ABAC_RULES : [])].map((r) => el('li', {}, r))),
+		el('h3', {}, 'Configuration passes all rules'),
+		el('ul', { className: 'rules' }, ...RULES.map((r) => el('li', {}, r))),
 		el('p', { className: 'rules-note' },
-			'Rocket.Chat checks the document against the JSON Schema when the setting is saved. Rules the schema cannot express, such as a single color driver and unique ids, are only checked here.'),
+			'Rocket.Chat checks only the JSON Schema when the setting is saved. The other rules cannot be expressed in the schema, so only this builder checks them.'),
 	);
 };
 
@@ -1159,7 +1378,6 @@ const renderSchemaToggle = () => {
 };
 
 const update = (rebuildForms = true) => {
-	persist();
 	renderPreview();
 	renderWarnings();
 	renderJson();
@@ -1170,6 +1388,7 @@ const update = (rebuildForms = true) => {
 		renderNonAbac();
 		renderSimulation();
 	}
+	persist();
 };
 
 // ---- toolbar ----
@@ -1200,12 +1419,23 @@ document.querySelectorAll('[data-schema]').forEach((button) =>
 	}),
 );
 
-const showNotice = (text) => {
+let noticeAction = null;
+const showNotice = (text, action) => {
 	$('#notice-text').textContent = text;
+	$('#notice-action').hidden = !action;
+	$('#notice-action').textContent = action?.label ?? '';
+	noticeAction = action?.run ?? null;
 	$('#notice').hidden = false;
 };
 const hideNotice = () => { $('#notice').hidden = true; };
-$('#notice-close').addEventListener('click', hideNotice);
+const forgetUnloadable = () => {
+	try { localStorage.removeItem(UNLOADABLE_KEY); } catch { /* storage unavailable — nothing was kept */ }
+};
+$('#notice-action').addEventListener('click', () => noticeAction?.());
+$('#notice-close').addEventListener('click', () => {
+	hideNotice();
+	forgetUnloadable();
+});
 
 const hasWorkInProgress = () => Object.keys(simulation).length > 0 || JSON.stringify(config) !== JSON.stringify(emptyConfig());
 
@@ -1266,41 +1496,66 @@ $('#btn-docs').addEventListener('click', () => docsDialog.showModal());
 $('#docs-close').addEventListener('click', () => docsDialog.close());
 
 const importDialog = $('#import-dialog');
+
+const parseImport = () => {
+	try {
+		const parsed = JSON.parse($('#import-text').value);
+		return { parsed, problems: structuralErrors(parsed).map((error) => describeError(parsed, error)) };
+	} catch (error) {
+		return { problems: [`Invalid JSON: ${error.message}`] };
+	}
+};
+
+const showImportProblems = (problems) => {
+	$('#import-error').replaceChildren(...(problems.length ? [
+		el('p', {}, `Can't load this document (${problems.length} ${problems.length === 1 ? 'problem' : 'problems'}). Fix it here and import again:`),
+		el('ul', {}, ...problems.map((problem) => el('li', {}, problem))),
+	] : []));
+};
+
+const openImport = (text) => {
+	$('#import-text').value = text;
+	showImportProblems(text ? parseImport().problems : []);
+	importDialog.showModal();
+};
+
 $('#btn-import').addEventListener('click', () =>
-	confirmReplace('Importing a document will replace your current configuration and simulated room values.', () => {
-		$('#import-error').textContent = '';
-		$('#import-text').value = '';
-		importDialog.showModal();
-	}),
+	confirmReplace('Importing a document will replace your current configuration and simulated room values.', () => openImport('')),
 );
 $('#import-cancel').addEventListener('click', () => importDialog.close());
 $('#import-apply').addEventListener('click', () => {
-	try {
-		const parsed = JSON.parse($('#import-text').value);
-		if (parsed?.version !== 1 || !Array.isArray(parsed.attributes) || typeof parsed.banner?.delimiter !== 'string') {
-			throw new Error('Not a version 1 classification banners document.');
-		}
-		const notes = [];
-		if (parsed.banner.style !== 'classic') {
-			notes.push(`Banner style “${parsed.banner.style}” is not allowed by the schema and was changed to classic.`);
-			parsed.banner.style = 'classic';
-		}
-		if (parsed.nonAbacBanner && !supportsNonAbac()) {
-			schemaVersion = '9.0';
-			notes.push('This document has non-ABAC banners, which need Rocket.Chat 9.0 or later, so the builder switched to 9.0+.');
-		}
-		config = parsed;
-		simulation = {};
-		importDialog.close();
-		hideNotice();
-		update();
-		if (notes.length) showNotice(notes.join(' '));
-	} catch (error) {
-		$('#import-error').textContent = error instanceof SyntaxError ? 'Invalid JSON.' : error.message;
+	const { parsed, problems } = parseImport();
+	if (problems.length) {
+		showImportProblems(problems);
+		return;
 	}
+	const notes = [];
+	if (parsed.banner.style !== 'classic') {
+		notes.push(`Banner style “${parsed.banner.style}” is not allowed by the schema and was changed to classic.`);
+		parsed.banner.style = 'classic';
+	}
+	if (parsed.nonAbacBanner && !supportsNonAbac()) {
+		schemaVersion = '9.0';
+		notes.push('This document has non-ABAC banners, which need Rocket.Chat 9.0 or later, so the builder switched to 9.0+.');
+	}
+	config = parsed;
+	simulation = {};
+	importDialog.close();
+	hideNotice();
+	forgetUnloadable();
+	update();
+	if (notes.length) showNotice(notes.join(' '));
 });
 
 update();
+
+const unloadable = readStorage(UNLOADABLE_KEY);
+if (unloadable !== null) {
+	showNotice('Your saved configuration could not be loaded, so the builder started empty. Dismissing this notice discards it.', {
+		label: 'Open in import',
+		run: () => confirmReplace('Importing a document will replace your current configuration and simulated room values.', () => openImport(unloadable)),
+	});
+}
 </script>
 </body>
 </html>
